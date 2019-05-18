@@ -1,4 +1,4 @@
-// Copyright 2012-2015 Oliver Eilhard. All rights reserved.
+// Copyright 2012-present Oliver Eilhard. All rights reserved.
 // Use of this source code is governed by a MIT-license.
 // See http://olivere.mit-license.org/license.txt for details.
 
@@ -10,8 +10,12 @@ import (
 )
 
 func TestFuzzyQuery(t *testing.T) {
-	q := NewFuzzyQuery().Name("user").Value("ki").Boost(1.5).Fuzziness(2).PrefixLength(0).MaxExpansions(100)
-	data, err := json.Marshal(q.Source())
+	q := NewFuzzyQuery("user", "ki").Boost(1.5).Fuzziness(2).PrefixLength(0).MaxExpansions(100)
+	src, err := q.Source()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(src)
 	if err != nil {
 		t.Fatalf("marshaling to JSON failed: %v", err)
 	}

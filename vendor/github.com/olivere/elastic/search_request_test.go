@@ -1,4 +1,4 @@
-// Copyright 2012-2015 Oliver Eilhard. All rights reserved.
+// Copyright 2012-present Oliver Eilhard. All rights reserved.
 // Use of this source code is governed by a MIT-license.
 // See http://olivere.mit-license.org/license.txt for details.
 
@@ -24,7 +24,7 @@ func TestSearchRequestIndex(t *testing.T) {
 }
 
 func TestSearchRequestIndices(t *testing.T) {
-	builder := NewSearchRequest().Indices("test", "test2")
+	builder := NewSearchRequest().Index("test", "test2")
 	data, err := json.Marshal(builder.header())
 	if err != nil {
 		t.Fatalf("marshaling to JSON failed: %v", err)
@@ -41,8 +41,21 @@ func TestSearchRequestHasIndices(t *testing.T) {
 	if builder.HasIndices() {
 		t.Errorf("expected HasIndices to return true; got %v", builder.HasIndices())
 	}
-	builder = builder.Indices("test", "test2")
+	builder = builder.Index("test", "test2")
 	if !builder.HasIndices() {
 		t.Errorf("expected HasIndices to return false; got %v", builder.HasIndices())
+	}
+}
+
+func TestSearchRequestIgnoreUnavailable(t *testing.T) {
+	builder := NewSearchRequest().Index("test").IgnoreUnavailable(true)
+	data, err := json.Marshal(builder.header())
+	if err != nil {
+		t.Fatalf("marshaling to JSON failed: %v", err)
+	}
+	got := string(data)
+	expected := `{"ignore_unavailable":true,"index":"test"}`
+	if got != expected {
+		t.Errorf("expected\n%s\n,got:\n%s", expected, got)
 	}
 }

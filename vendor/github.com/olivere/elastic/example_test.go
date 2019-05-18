@@ -1,10 +1,11 @@
-// Copyright 2012-2015 Oliver Eilhard. All rights reserved.
+// Copyright 2012-present Oliver Eilhard. All rights reserved.
 // Use of this source code is governed by a MIT-license.
 // See http://olivere.mit-license.org/license.txt for details.
 
 package elastic_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -29,23 +30,22 @@ type Tweet struct {
 func Example() {
 	errorlog := log.New(os.Stdout, "APP ", log.LstdFlags)
 
-	// Obtain a client. You can provide your own HTTP client here.
+	// Obtain a client. You can also provide your own HTTP client here.
 	client, err := elastic.NewClient(elastic.SetErrorLog(errorlog))
+	// Trace request and response details like this
+	// client, err := elastic.NewClient(elastic.SetTraceLog(log.New(os.Stdout, "", 0)))
 	if err != nil {
 		// Handle error
 		panic(err)
 	}
-
-	// Trace request and response details like this
-	//client.SetTracer(log.New(os.Stdout, "", 0))
 
 	// Ping the Elasticsearch server to get e.g. the version number
-	info, code, err := client.Ping().Do()
+	info, code, err := client.Ping("http://127.0.0.1:9200").Do(context.Background())
 	if err != nil {
 		// Handle error
 		panic(err)
 	}
-	fmt.Printf("Elasticsearch returned with code %d and version %s", code, info.Version.Number)
+	fmt.Printf("Elasticsearch returned with code %d and version %s\n", code, info.Version.Number)
 
 	// Getting the ES version number is quite common, so there's a shortcut
 	esversion, err := client.ElasticsearchVersion("http://127.0.0.1:9200")
@@ -53,17 +53,51 @@ func Example() {
 		// Handle error
 		panic(err)
 	}
-	fmt.Printf("Elasticsearch version %s", esversion)
+	fmt.Printf("Elasticsearch version %s\n", esversion)
 
 	// Use the IndexExists service to check if a specified index exists.
-	exists, err := client.IndexExists("twitter").Do()
+	exists, err := client.IndexExists("twitter").Do(context.Background())
 	if err != nil {
 		// Handle error
 		panic(err)
 	}
 	if !exists {
 		// Create a new index.
-		createIndex, err := client.CreateIndex("twitter").Do()
+		mapping := `
+{
+	"settings":{
+		"number_of_shards":1,
+		"number_of_replicas":0
+	},
+	"mappings":{
+		"doc":{
+			"properties":{
+				"user":{
+					"type":"keyword"
+				},
+				"message":{
+					"type":"text",
+					"store": true,
+					"fielddata": true
+				},
+                "retweets":{
+                    "type":"long"
+                },
+				"tags":{
+					"type":"keyword"
+				},
+				"location":{
+					"type":"geo_point"
+				},
+				"suggest_field":{
+					"type":"completion"
+				}
+			}
+		}
+	}
+}
+`
+		createIndex, err := client.CreateIndex("twitter").Body(mapping).Do(context.Background())
 		if err != nil {
 			// Handle error
 			panic(err)
@@ -77,10 +111,10 @@ func Example() {
 	tweet1 := Tweet{User: "olivere", Message: "Take Five", Retweets: 0}
 	put1, err := client.Index().
 		Index("twitter").
-		Type("tweet").
+		Type("doc").
 		Id("1").
 		BodyJson(tweet1).
-		Do()
+		Do(context.Background())
 	if err != nil {
 		// Handle error
 		panic(err)
@@ -91,10 +125,10 @@ func Example() {
 	tweet2 := `{"user" : "olivere", "message" : "It's a Raggy Waltz"}`
 	put2, err := client.Index().
 		Index("twitter").
-		Type("tweet").
+		Type("doc").
 		Id("2").
 		BodyString(tweet2).
-		Do()
+		Do(context.Background())
 	if err != nil {
 		// Handle error
 		panic(err)
@@ -104,19 +138,26 @@ func Example() {
 	// Get tweet with specified ID
 	get1, err := client.Get().
 		Index("twitter").
-		Type("tweet").
+		Type("doc").
 		Id("1").
-		Do()
+		Do(context.Background())
 	if err != nil {
-		// Handle error
-		panic(err)
+		switch {
+		case elastic.IsNotFound(err):
+			panic(fmt.Sprintf("Document not found: %v", err))
+		case elastic.IsTimeout(err):
+			panic(fmt.Sprintf("Timeout retrieving document: %v", err))
+		case elastic.IsConnErr(err):
+			panic(fmt.Sprintf("Connection problem: %v", err))
+		default:
+			// Some other kind of error
+			panic(err)
+		}
 	}
-	if get1.Found {
-		fmt.Printf("Got document %s in version %d from index %s, type %s\n", get1.Id, get1.Version, get1.Index, get1.Type)
-	}
+	fmt.Printf("Got document %s in version %d from index %s, type %s\n", get1.Id, get1.Version, get1.Index, get1.Type)
 
 	// Flush to make sure the documents got written.
-	_, err = client.Flush().Index("twitter").Do()
+	_, err = client.Flush().Index("twitter").Do(context.Background())
 	if err != nil {
 		panic(err)
 	}
@@ -124,12 +165,12 @@ func Example() {
 	// Search with a term query
 	termQuery := elastic.NewTermQuery("user", "olivere")
 	searchResult, err := client.Search().
-		Index("twitter").   // search in index "twitter"
-		Query(&termQuery).  // specify the query
-		Sort("user", true). // sort by "user" field, ascending
-		From(0).Size(10).   // take documents 0-9
-		Pretty(true).       // pretty print request and response JSON
-		Do()                // execute
+		Index("twitter").        // search in index "twitter"
+		Query(termQuery).        // specify the query
+		Sort("user", true).      // sort by "user" field, ascending
+		From(0).Size(10).        // take documents 0-9
+		Pretty(true).            // pretty print request and response JSON
+		Do(context.Background()) // execute
 	if err != nil {
 		// Handle error
 		panic(err)
@@ -152,7 +193,7 @@ func Example() {
 	fmt.Printf("Found a total of %d tweets\n", searchResult.TotalHits())
 
 	// Here's how you iterate through results with full control over each step.
-	if searchResult.Hits != nil {
+	if searchResult.Hits.TotalHits > 0 {
 		fmt.Printf("Found a total of %d tweets\n", searchResult.Hits.TotalHits)
 
 		// Iterate through results
@@ -176,11 +217,11 @@ func Example() {
 
 	// Update a tweet by the update API of Elasticsearch.
 	// We just increment the number of retweets.
-	update, err := client.Update().Index("twitter").Type("tweet").Id("1").
-		Script("ctx._source.retweets += num").
-		ScriptParams(map[string]interface{}{"num": 1}).
+	script := elastic.NewScript("ctx._source.retweets += params.num").Param("num", 1)
+	update, err := client.Update().Index("twitter").Type("doc").Id("1").
+		Script(script).
 		Upsert(map[string]interface{}{"retweets": 0}).
-		Do()
+		Do(context.Background())
 	if err != nil {
 		// Handle error
 		panic(err)
@@ -190,7 +231,7 @@ func Example() {
 	// ...
 
 	// Delete an index.
-	deleteIndex, err := client.DeleteIndex("twitter").Do()
+	deleteIndex, err := client.DeleteIndex("twitter").Do(context.Background())
 	if err != nil {
 		// Handle error
 		panic(err)
@@ -200,8 +241,8 @@ func Example() {
 	}
 }
 
-func ExampleClient_NewClient_default() {
-	// Obtain a client to the Elasticsearch instance on http://localhost:9200.
+func ExampleNewClient_default() {
+	// Obtain a client to the Elasticsearch instance on http://127.0.0.1:9200.
 	client, err := elastic.NewClient()
 	if err != nil {
 		// Handle error
@@ -214,7 +255,7 @@ func ExampleClient_NewClient_default() {
 	// connected
 }
 
-func ExampleClient_NewClient_cluster() {
+func ExampleNewClient_cluster() {
 	// Obtain a client for an Elasticsearch cluster of two nodes,
 	// running on 10.0.1.1 and 10.0.1.2.
 	client, err := elastic.NewClient(elastic.SetURL("http://10.0.1.1:9200", "http://10.0.1.2:9200"))
@@ -225,7 +266,7 @@ func ExampleClient_NewClient_cluster() {
 	_ = client
 }
 
-func ExampleClient_NewClient_manyOptions() {
+func ExampleNewClient_manyOptions() {
 	// Obtain a client for an Elasticsearch cluster of two nodes,
 	// running on 10.0.1.1 and 10.0.1.2. Do not run the sniffer.
 	// Set the healthcheck interval to 10s. When requests fail,
@@ -245,7 +286,7 @@ func ExampleClient_NewClient_manyOptions() {
 	_ = client
 }
 
-func ExampleIndexExistsService() {
+func ExampleIndicesExistsService() {
 	// Get a client to the local Elasticsearch instance.
 	client, err := elastic.NewClient()
 	if err != nil {
@@ -253,7 +294,7 @@ func ExampleIndexExistsService() {
 		panic(err)
 	}
 	// Use the IndexExists service to check if the index "twitter" exists.
-	exists, err := client.IndexExists("twitter").Do()
+	exists, err := client.IndexExists("twitter").Do(context.Background())
 	if err != nil {
 		// Handle error
 		panic(err)
@@ -263,7 +304,7 @@ func ExampleIndexExistsService() {
 	}
 }
 
-func ExampleCreateIndexService() {
+func ExampleIndicesCreateService() {
 	// Get a client to the local Elasticsearch instance.
 	client, err := elastic.NewClient()
 	if err != nil {
@@ -271,7 +312,7 @@ func ExampleCreateIndexService() {
 		panic(err)
 	}
 	// Create a new index.
-	createIndex, err := client.CreateIndex("twitter").Do()
+	createIndex, err := client.CreateIndex("twitter").Do(context.Background())
 	if err != nil {
 		// Handle error
 		panic(err)
@@ -281,7 +322,7 @@ func ExampleCreateIndexService() {
 	}
 }
 
-func ExampleDeleteIndexService() {
+func ExampleIndicesDeleteService() {
 	// Get a client to the local Elasticsearch instance.
 	client, err := elastic.NewClient()
 	if err != nil {
@@ -289,7 +330,7 @@ func ExampleDeleteIndexService() {
 		panic(err)
 	}
 	// Delete an index.
-	deleteIndex, err := client.DeleteIndex("twitter").Do()
+	deleteIndex, err := client.DeleteIndex("twitter").Do(context.Background())
 	if err != nil {
 		// Handle error
 		panic(err)
@@ -310,12 +351,12 @@ func ExampleSearchService() {
 	// Search with a term query
 	termQuery := elastic.NewTermQuery("user", "olivere")
 	searchResult, err := client.Search().
-		Index("twitter").   // search in index "twitter"
-		Query(&termQuery).  // specify the query
-		Sort("user", true). // sort by "user" field, ascending
-		From(0).Size(10).   // take documents 0-9
-		Pretty(true).       // pretty print request and response JSON
-		Do()                // execute
+		Index("twitter").        // search in index "twitter"
+		Query(termQuery).        // specify the query
+		Sort("user", true).      // sort by "user" field, ascending
+		From(0).Size(10).        // take documents 0-9
+		Pretty(true).            // pretty print request and response JSON
+		Do(context.Background()) // execute
 	if err != nil {
 		// Handle error
 		panic(err)
@@ -326,7 +367,7 @@ func ExampleSearchService() {
 	fmt.Printf("Query took %d milliseconds\n", searchResult.TookInMillis)
 
 	// Number of hits
-	if searchResult.Hits != nil {
+	if searchResult.Hits.TotalHits > 0 {
 		fmt.Printf("Found a total of %d tweets\n", searchResult.Hits.TotalHits)
 
 		// Iterate through results
@@ -369,7 +410,7 @@ func ExampleAggregations() {
 		SearchType("count").               // ... do not return hits, just the count
 		Aggregation("timeline", timeline). // add our aggregation to the query
 		Pretty(true).                      // pretty print request and response JSON
-		Do()                               // execute
+		Do(context.Background())           // execute
 	if err != nil {
 		// Handle error
 		panic(err)
@@ -388,7 +429,11 @@ func ExampleAggregations() {
 		histogram, found := userBucket.DateHistogram("history")
 		if found {
 			for _, year := range histogram.Buckets {
-				fmt.Printf("user %q has %d tweets in %q\n", user, year.DocCount, year.KeyAsString)
+				var key string
+				if s := year.KeyAsString; s != nil {
+					key = *s
+				}
+				fmt.Printf("user %q has %d tweets in %q\n", user, year.DocCount, key)
 			}
 		}
 	}
@@ -401,7 +446,7 @@ func ExampleSearchResult() {
 	}
 
 	// Do a search
-	searchResult, err := client.Search().Index("twitter").Query(elastic.NewMatchAllQuery()).Do()
+	searchResult, err := client.Search().Index("twitter").Query(elastic.NewMatchAllQuery()).Do(context.Background())
 	if err != nil {
 		panic(err)
 	}
@@ -422,7 +467,7 @@ func ExampleSearchResult() {
 	fmt.Printf("Found a total of %d tweets\n", searchResult.TotalHits())
 
 	// Here's how you iterate hits with full control.
-	if searchResult.Hits != nil {
+	if searchResult.Hits.TotalHits > 0 {
 		fmt.Printf("Found a total of %d tweets\n", searchResult.Hits.TotalHits)
 
 		// Iterate through results
@@ -445,58 +490,6 @@ func ExampleSearchResult() {
 	}
 }
 
-func ExamplePutTemplateService() {
-	client, err := elastic.NewClient()
-	if err != nil {
-		panic(err)
-	}
-
-	// Create search template
-	tmpl := `{"template":{"query":{"match":{"title":"{{query_string}}"}}}}`
-
-	// Create template
-	resp, err := client.PutTemplate().
-		Id("my-search-template"). // Name of the template
-		BodyString(tmpl).         // Search template itself
-		Do()                      // Execute
-	if err != nil {
-		panic(err)
-	}
-	if resp.Created {
-		fmt.Println("search template created")
-	}
-}
-
-func ExampleGetTemplateService() {
-	client, err := elastic.NewClient()
-	if err != nil {
-		panic(err)
-	}
-
-	// Get template stored under "my-search-template"
-	resp, err := client.GetTemplate().Id("my-search-template").Do()
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("search template is: %q\n", resp.Template)
-}
-
-func ExampleDeleteTemplateService() {
-	client, err := elastic.NewClient()
-	if err != nil {
-		panic(err)
-	}
-
-	// Delete template
-	resp, err := client.DeleteTemplate().Id("my-search-template").Do()
-	if err != nil {
-		panic(err)
-	}
-	if resp != nil && resp.Found {
-		fmt.Println("template deleted")
-	}
-}
-
 func ExampleClusterHealthService() {
 	client, err := elastic.NewClient()
 	if err != nil {
@@ -504,7 +497,7 @@ func ExampleClusterHealthService() {
 	}
 
 	// Get cluster health
-	res, err := client.ClusterHealth().Index("twitter").Do()
+	res, err := client.ClusterHealth().Index("twitter").Do(context.Background())
 	if err != nil {
 		panic(err)
 	}
@@ -514,14 +507,14 @@ func ExampleClusterHealthService() {
 	fmt.Printf("Cluster status is %q\n", res.Status)
 }
 
-func ExampleClusterHealthService_WaitForGreen() {
+func ExampleClusterHealthService_WaitForStatus() {
 	client, err := elastic.NewClient()
 	if err != nil {
 		panic(err)
 	}
 
 	// Wait for status green
-	res, err := client.ClusterHealth().WaitForStatus("green").Timeout("15s").Do()
+	res, err := client.ClusterHealth().WaitForStatus("green").Timeout("15s").Do(context.Background())
 	if err != nil {
 		panic(err)
 	}
@@ -539,7 +532,7 @@ func ExampleClusterStateService() {
 	}
 
 	// Get cluster state
-	res, err := client.ClusterState().Metric("version").Do()
+	res, err := client.ClusterState().Metric("version").Do(context.Background())
 	if err != nil {
 		panic(err)
 	}

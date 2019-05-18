@@ -1,10 +1,11 @@
-// Copyright 2012-2015 Oliver Eilhard. All rights reserved.
+// Copyright 2012-present Oliver Eilhard. All rights reserved.
 // Use of this source code is governed by a MIT-license.
 // See http://olivere.mit-license.org/license.txt for details.
 
 package elastic
 
 import (
+	"context"
 	"net/url"
 	"testing"
 )
@@ -13,7 +14,7 @@ func TestClusterState(t *testing.T) {
 	client := setupTestClientAndCreateIndex(t)
 
 	// Get cluster state
-	res, err := client.ClusterState().Do()
+	res, err := client.ClusterState().Index("_all").Metric("_all").Pretty(true).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,5 +89,17 @@ func TestClusterStateURLs(t *testing.T) {
 		if gotParams.Encode() != test.ExpectedParams.Encode() {
 			t.Errorf("expected URL params = %v; got: %v", test.ExpectedParams, gotParams)
 		}
+	}
+}
+
+func TestClusterStateGet(t *testing.T) {
+	client := setupTestClientAndCreateIndex(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
+
+	state, err := client.ClusterState().Pretty(true).Do(context.TODO())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want, have := "elasticsearch", state.ClusterName; want != have {
+		t.Fatalf("ClusterName: want %q, have %q", want, have)
 	}
 }

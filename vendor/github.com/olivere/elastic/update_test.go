@@ -1,23 +1,22 @@
-// Copyright 2012-2015 Oliver Eilhard. All rights reserved.
+// Copyright 2012-present Oliver Eilhard. All rights reserved.
 // Use of this source code is governed by a MIT-license.
 // See http://olivere.mit-license.org/license.txt for details.
 
 package elastic
 
 import (
+	"context"
 	"encoding/json"
 	"net/url"
 	"testing"
-	"time"
 )
 
 func TestUpdateViaScript(t *testing.T) {
-	client := setupTestClient(t)
+	client := setupTestClient(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
+
 	update := client.Update().
 		Index("test").Type("type1").Id("1").
-		Script("ctx._source.tags += tag").
-		ScriptParams(map[string]interface{}{"tag": "blue"}).
-		ScriptLang("groovy")
+		Script(NewScript("ctx._source.tags += tag").Params(map[string]interface{}{"tag": "blue"}).Lang("groovy"))
 	path, params, err := update.url()
 	if err != nil {
 		t.Fatalf("expected to return URL, got: %v", err)
@@ -39,14 +38,14 @@ func TestUpdateViaScript(t *testing.T) {
 		t.Fatalf("expected to marshal body as JSON, got: %v", err)
 	}
 	got := string(data)
-	expected := `{"lang":"groovy","params":{"tag":"blue"},"script":"ctx._source.tags += tag"}`
+	expected := `{"script":{"lang":"groovy","params":{"tag":"blue"},"source":"ctx._source.tags += tag"}}`
 	if got != expected {
 		t.Errorf("expected\n%s\ngot:\n%s", expected, got)
 	}
 }
 
 func TestUpdateViaScriptId(t *testing.T) {
-	client := setupTestClient(t)
+	client := setupTestClient(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
 
 	scriptParams := map[string]interface{}{
 		"pageViewEvent": map[string]interface{}{
@@ -55,12 +54,12 @@ func TestUpdateViaScriptId(t *testing.T) {
 			"time":     "2014-01-01 12:32",
 		},
 	}
+	script := NewScriptStored("my_web_session_summariser").Params(scriptParams)
 
 	update := client.Update().
 		Index("sessions").Type("session").Id("dh3sgudg8gsrgl").
-		ScriptId("my_web_session_summariser").
+		Script(script).
 		ScriptedUpsert(true).
-		ScriptParams(scriptParams).
 		Upsert(map[string]interface{}{})
 	path, params, err := update.url()
 	if err != nil {
@@ -83,62 +82,18 @@ func TestUpdateViaScriptId(t *testing.T) {
 		t.Fatalf("expected to marshal body as JSON, got: %v", err)
 	}
 	got := string(data)
-	expected := `{"params":{"pageViewEvent":{"response":404,"time":"2014-01-01 12:32","url":"foo.com/bar"}},"script_id":"my_web_session_summariser","scripted_upsert":true,"upsert":{}}`
-	if got != expected {
-		t.Errorf("expected\n%s\ngot:\n%s", expected, got)
-	}
-}
-
-func TestUpdateViaScriptFile(t *testing.T) {
-	client := setupTestClient(t)
-
-	scriptParams := map[string]interface{}{
-		"pageViewEvent": map[string]interface{}{
-			"url":      "foo.com/bar",
-			"response": 404,
-			"time":     "2014-01-01 12:32",
-		},
-	}
-
-	update := client.Update().
-		Index("sessions").Type("session").Id("dh3sgudg8gsrgl").
-		ScriptFile("update_script").
-		ScriptedUpsert(true).
-		ScriptParams(scriptParams).
-		Upsert(map[string]interface{}{})
-	path, params, err := update.url()
-	if err != nil {
-		t.Fatalf("expected to return URL, got: %v", err)
-	}
-	expectedPath := `/sessions/session/dh3sgudg8gsrgl/_update`
-	if expectedPath != path {
-		t.Errorf("expected URL path\n%s\ngot:\n%s", expectedPath, path)
-	}
-	expectedParams := url.Values{}
-	if expectedParams.Encode() != params.Encode() {
-		t.Errorf("expected URL parameters\n%s\ngot:\n%s", expectedParams.Encode(), params.Encode())
-	}
-	body, err := update.body()
-	if err != nil {
-		t.Fatalf("expected to return body, got: %v", err)
-	}
-	data, err := json.Marshal(body)
-	if err != nil {
-		t.Fatalf("expected to marshal body as JSON, got: %v", err)
-	}
-	got := string(data)
-	expected := `{"params":{"pageViewEvent":{"response":404,"time":"2014-01-01 12:32","url":"foo.com/bar"}},"script_file":"update_script","scripted_upsert":true,"upsert":{}}`
+	expected := `{"script":{"id":"my_web_session_summariser","params":{"pageViewEvent":{"response":404,"time":"2014-01-01 12:32","url":"foo.com/bar"}}},"scripted_upsert":true,"upsert":{}}`
 	if got != expected {
 		t.Errorf("expected\n%s\ngot:\n%s", expected, got)
 	}
 }
 
 func TestUpdateViaScriptAndUpsert(t *testing.T) {
-	client := setupTestClient(t)
+	client := setupTestClient(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
+
 	update := client.Update().
 		Index("test").Type("type1").Id("1").
-		Script("ctx._source.counter += count").
-		ScriptParams(map[string]interface{}{"count": 4}).
+		Script(NewScript("ctx._source.counter += count").Params(map[string]interface{}{"count": 4})).
 		Upsert(map[string]interface{}{"counter": 1})
 	path, params, err := update.url()
 	if err != nil {
@@ -161,14 +116,15 @@ func TestUpdateViaScriptAndUpsert(t *testing.T) {
 		t.Fatalf("expected to marshal body as JSON, got: %v", err)
 	}
 	got := string(data)
-	expected := `{"params":{"count":4},"script":"ctx._source.counter += count","upsert":{"counter":1}}`
+	expected := `{"script":{"params":{"count":4},"source":"ctx._source.counter += count"},"upsert":{"counter":1}}`
 	if got != expected {
 		t.Errorf("expected\n%s\ngot:\n%s", expected, got)
 	}
 }
 
 func TestUpdateViaDoc(t *testing.T) {
-	client := setupTestClient(t)
+	client := setupTestClient(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
+
 	update := client.Update().
 		Index("test").Type("type1").Id("1").
 		Doc(map[string]interface{}{"name": "new_name"}).
@@ -201,13 +157,14 @@ func TestUpdateViaDoc(t *testing.T) {
 }
 
 func TestUpdateViaDocAndUpsert(t *testing.T) {
-	client := setupTestClient(t)
+	client := setupTestClient(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
+
 	update := client.Update().
 		Index("test").Type("type1").Id("1").
 		Doc(map[string]interface{}{"name": "new_name"}).
 		DocAsUpsert(true).
 		Timeout("1s").
-		Refresh(true)
+		Refresh("true")
 	path, params, err := update.url()
 	if err != nil {
 		t.Fatalf("expected to return URL, got: %v", err)
@@ -235,110 +192,71 @@ func TestUpdateViaDocAndUpsert(t *testing.T) {
 	}
 }
 
-func TestUpdateViaScriptIntegration(t *testing.T) {
-	client := setupTestClientAndCreateIndex(t)
+func TestUpdateViaDocAndUpsertAndFetchSource(t *testing.T) {
+	client := setupTestClient(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
 
-	esversion, err := client.ElasticsearchVersion(DefaultURL)
+	update := client.Update().
+		Index("test").Type("type1").Id("1").
+		Doc(map[string]interface{}{"name": "new_name"}).
+		DocAsUpsert(true).
+		Timeout("1s").
+		Refresh("true").
+		FetchSource(true)
+	path, params, err := update.url()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("expected to return URL, got: %v", err)
 	}
-	if esversion >= "1.4.3" || (esversion < "1.4.0" && esversion >= "1.3.8") {
-		t.Skip("groovy scripting has been disabled as for [1.3.8,1.4.0) and 1.4.3+")
-		return
+	expectedPath := `/test/type1/1/_update`
+	if expectedPath != path {
+		t.Errorf("expected URL path\n%s\ngot:\n%s", expectedPath, path)
 	}
-
-	tweet1 := tweet{User: "olivere", Retweets: 10, Message: "Welcome to Golang and Elasticsearch."}
-
-	// Add a document
-	indexResult, err := client.Index().
-		Index(testIndexName).
-		Type("tweet").
-		Id("1").
-		BodyJson(&tweet1).
-		Do()
+	expectedParams := url.Values{
+		"refresh": []string{"true"},
+		"timeout": []string{"1s"},
+	}
+	if expectedParams.Encode() != params.Encode() {
+		t.Errorf("expected URL parameters\n%s\ngot:\n%s", expectedParams.Encode(), params.Encode())
+	}
+	body, err := update.body()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("expected to return body, got: %v", err)
 	}
-	if indexResult == nil {
-		t.Errorf("expected result to be != nil; got: %v", indexResult)
-	}
-
-	// Update number of retweets
-	increment := 1
-	update, err := client.Update().Index(testIndexName).Type("tweet").Id("1").
-		Script("ctx._source.retweets += num").
-		ScriptParams(map[string]interface{}{"num": increment}).
-		ScriptLang("groovy"). // Use "groovy" as default language as 1.3 uses MVEL by default
-		Do()
+	data, err := json.Marshal(body)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("expected to marshal body as JSON, got: %v", err)
 	}
-	if update == nil {
-		t.Errorf("expected update to be != nil; got %v", update)
-	}
-	if update.Version != indexResult.Version+1 {
-		t.Errorf("expected version to be %d; got %d", indexResult.Version+1, update.Version)
-	}
-
-	// Get document
-	getResult, err := client.Get().
-		Index(testIndexName).
-		Type("tweet").
-		Id("1").
-		Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if getResult.Index != testIndexName {
-		t.Errorf("expected GetResult.Index %q; got %q", testIndexName, getResult.Index)
-	}
-	if getResult.Type != "tweet" {
-		t.Errorf("expected GetResult.Type %q; got %q", "tweet", getResult.Type)
-	}
-	if getResult.Id != "1" {
-		t.Errorf("expected GetResult.Id %q; got %q", "1", getResult.Id)
-	}
-	if getResult.Source == nil {
-		t.Errorf("expected GetResult.Source to be != nil; got nil")
-	}
-
-	// Decode the Source field
-	var tweetGot tweet
-	err = json.Unmarshal(*getResult.Source, &tweetGot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if tweetGot.Retweets != tweet1.Retweets+increment {
-		t.Errorf("expected Tweet.Retweets to be %d; got %d", tweet1.Retweets+increment, tweetGot.Retweets)
+	got := string(data)
+	expected := `{"_source":true,"doc":{"name":"new_name"},"doc_as_upsert":true}`
+	if got != expected {
+		t.Errorf("expected\n%s\ngot:\n%s", expected, got)
 	}
 }
 
-func TestUpdateReturnsErrorOnFailure(t *testing.T) {
-	client := setupTestClientAndCreateIndex(t)
+func TestUpdateAndFetchSource(t *testing.T) {
+	client := setupTestClientAndCreateIndexAndAddDocs(t) // , SetTraceLog(log.New(os.Stdout, "", 0)))
 
-	// Travis lags sometimes
-	if isTravis() {
-		time.Sleep(2 * time.Second)
-	}
-
-	// Ensure that no tweet with id #1 exists
-	exists, err := client.Exists().Index(testIndexName).Type("tweet").Id("1").Do()
+	res, err := client.Update().
+		Index(testIndexName).Type("doc").Id("1").
+		Doc(map[string]interface{}{"user": "sandrae"}).
+		DetectNoop(true).
+		FetchSource(true).
+		Do(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if exists {
-		t.Fatalf("expected no document; got: %v", exists)
+	if res == nil {
+		t.Fatal("expected response != nil")
 	}
-
-	// Update (non-existent) tweet with id #1
-	update, err := client.Update().
-		Index(testIndexName).Type("tweet").Id("1").
-		Doc(map[string]interface{}{"retweets": 42}).
-		Do()
-	if err == nil {
-		t.Fatalf("expected error to be != nil; got: %v", err)
+	if res.GetResult == nil {
+		t.Fatal("expected GetResult != nil")
 	}
-	if update != nil {
-		t.Fatalf("expected update to be == nil; got %v", update)
+	data, err := json.Marshal(res.GetResult.Source)
+	if err != nil {
+		t.Fatalf("expected to marshal body as JSON, got: %v", err)
+	}
+	got := string(data)
+	expected := `{"user":"sandrae","message":"Welcome to Golang and Elasticsearch.","retweets":0,"created":"0001-01-01T00:00:00Z"}`
+	if got != expected {
+		t.Errorf("expected\n%s\ngot:\n%s", expected, got)
 	}
 }

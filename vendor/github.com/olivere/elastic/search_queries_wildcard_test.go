@@ -1,10 +1,11 @@
-// Copyright 2012-2015 Oliver Eilhard. All rights reserved.
+// Copyright 2012-present Oliver Eilhard. All rights reserved.
 // Use of this source code is governed by a MIT-license.
 // See http://olivere.mit-license.org/license.txt for details.
 
 package elastic_test
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -22,9 +23,9 @@ func ExampleWildcardQuery() {
 	// Define wildcard query
 	q := elastic.NewWildcardQuery("user", "oli*er?").Boost(1.2)
 	searchResult, err := client.Search().
-		Index("twitter"). // search in index "twitter"
-		Query(q).         // use wildcard query defined above
-		Do()              // execute
+		Index("twitter").  // search in index "twitter"
+		Query(q).          // use wildcard query defined above
+		Do(context.TODO()) // execute
 	if err != nil {
 		// Handle error
 		panic(err)
@@ -34,7 +35,11 @@ func ExampleWildcardQuery() {
 
 func TestWildcardQuery(t *testing.T) {
 	q := elastic.NewWildcardQuery("user", "ki*y??")
-	data, err := json.Marshal(q.Source())
+	src, err := q.Source()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(src)
 	if err != nil {
 		t.Fatalf("marshaling to JSON failed: %v", err)
 	}
@@ -47,7 +52,11 @@ func TestWildcardQuery(t *testing.T) {
 
 func TestWildcardQueryWithBoost(t *testing.T) {
 	q := elastic.NewWildcardQuery("user", "ki*y??").Boost(1.2)
-	data, err := json.Marshal(q.Source())
+	src, err := q.Source()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(src)
 	if err != nil {
 		t.Fatalf("marshaling to JSON failed: %v", err)
 	}

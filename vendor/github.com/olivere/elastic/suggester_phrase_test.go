@@ -1,4 +1,4 @@
-// Copyright 2012-2015 Oliver Eilhard. All rights reserved.
+// Copyright 2012-present Oliver Eilhard. All rights reserved.
 // Use of this source code is governed by a MIT-license.
 // See http://olivere.mit-license.org/license.txt for details.
 
@@ -19,7 +19,11 @@ func TestPhraseSuggesterSource(t *testing.T) {
 		MaxErrors(0.5).
 		GramSize(2).
 		Highlight("<em>", "</em>")
-	data, err := json.Marshal(s.Source(true))
+	src, err := s.Source(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(src)
 	if err != nil {
 		t.Fatalf("marshaling to JSON failed: %v", err)
 	}
@@ -47,12 +51,16 @@ func TestPhraseSuggesterSourceWithContextQuery(t *testing.T) {
 		GramSize(2).
 		Highlight("<em>", "</em>").
 		ContextQuery(geomapQ)
-	data, err := json.Marshal(s.Source(true))
+	src, err := s.Source(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(src)
 	if err != nil {
 		t.Fatalf("marshaling to JSON failed: %v", err)
 	}
 	got := string(data)
-	expected := `{"name":{"text":"Xor the Got-Jewel","phrase":{"analyzer":"body","context":{"location":{"default":{"lat":0,"lon":0},"neighbors":true,"path":"pin","precision":["1km","5m"],"type":"geo"}},"field":"bigram","gram_size":2,"highlight":{"post_tag":"\u003c/em\u003e","pre_tag":"\u003cem\u003e"},"max_errors":0.5,"real_word_error_likelihood":0.95,"size":1}}}`
+	expected := `{"name":{"text":"Xor the Got-Jewel","phrase":{"analyzer":"body","contexts":{"location":{"default":{"lat":0,"lon":0},"neighbors":true,"path":"pin","precision":["1km","5m"],"type":"geo"}},"field":"bigram","gram_size":2,"highlight":{"post_tag":"\u003c/em\u003e","pre_tag":"\u003cem\u003e"},"max_errors":0.5,"real_word_error_likelihood":0.95,"size":1}}}`
 	if got != expected {
 		t.Errorf("expected\n%s\n,got:\n%s", expected, got)
 	}
@@ -78,16 +86,22 @@ func TestPhraseSuggesterComplexSource(t *testing.T) {
 		Confidence(2.0).
 		GramSize(2).
 		CandidateGenerators(g1, g2).
-		CollateQuery(`"match":{"{{field_name}}" : "{{suggestion}}"}`).
+		CollateQuery(
+			NewScriptInline(`{"match":{"{{field_name}}" : "{{suggestion}}"}}`),
+		).
 		CollateParams(map[string]interface{}{"field_name": "title"}).
 		CollatePreference("_primary").
 		CollatePrune(true)
-	data, err := json.Marshal(s.Source(true))
+	src, err := s.Source(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(src)
 	if err != nil {
 		t.Fatalf("marshaling to JSON failed: %v", err)
 	}
 	got := string(data)
-	expected := `{"simple_phrase":{"text":"Xor the Got-Jewel","phrase":{"analyzer":"body","collate":{"params":{"field_name":"title"},"preference":"_primary","prune":true,"query":"\"match\":{\"{{field_name}}\" : \"{{suggestion}}\"}"},"confidence":2,"direct_generator":[{"field":"body","min_word_length":1,"suggest_mode":"always"},{"field":"reverse","min_word_length":1,"post_filter":"reverse","pre_filter":"reverse","suggest_mode":"always"}],"field":"bigram","gram_size":2,"real_word_error_likelihood":0.95,"size":4}}}`
+	expected := `{"simple_phrase":{"text":"Xor the Got-Jewel","phrase":{"analyzer":"body","collate":{"params":{"field_name":"title"},"preference":"_primary","prune":true,"query":{"source":{"match":{"{{field_name}}":"{{suggestion}}"}}}},"confidence":2,"direct_generator":[{"field":"body","min_word_length":1,"suggest_mode":"always"},{"field":"reverse","min_word_length":1,"post_filter":"reverse","pre_filter":"reverse","suggest_mode":"always"}],"field":"bigram","gram_size":2,"real_word_error_likelihood":0.95,"size":4}}}`
 	if got != expected {
 		t.Errorf("expected\n%s\n,got:\n%s", expected, got)
 	}
@@ -95,7 +109,11 @@ func TestPhraseSuggesterComplexSource(t *testing.T) {
 
 func TestPhraseStupidBackoffSmoothingModel(t *testing.T) {
 	s := NewStupidBackoffSmoothingModel(0.42)
-	data, err := json.Marshal(s.Source())
+	src, err := s.Source()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(src)
 	if err != nil {
 		t.Fatalf("marshaling to JSON failed: %v", err)
 	}
@@ -112,7 +130,11 @@ func TestPhraseStupidBackoffSmoothingModel(t *testing.T) {
 
 func TestPhraseLaplaceSmoothingModel(t *testing.T) {
 	s := NewLaplaceSmoothingModel(0.63)
-	data, err := json.Marshal(s.Source())
+	src, err := s.Source()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(src)
 	if err != nil {
 		t.Fatalf("marshaling to JSON failed: %v", err)
 	}
@@ -129,7 +151,11 @@ func TestPhraseLaplaceSmoothingModel(t *testing.T) {
 
 func TestLinearInterpolationSmoothingModel(t *testing.T) {
 	s := NewLinearInterpolationSmoothingModel(0.3, 0.2, 0.05)
-	data, err := json.Marshal(s.Source())
+	src, err := s.Source()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(src)
 	if err != nil {
 		t.Fatalf("marshaling to JSON failed: %v", err)
 	}
@@ -141,5 +167,35 @@ func TestLinearInterpolationSmoothingModel(t *testing.T) {
 	}
 	if s.Type() != "linear_interpolation" {
 		t.Errorf("expected %q, got: %q", "linear_interpolation", s.Type())
+	}
+}
+
+func TestPhraseSuggesterSourceWithCollateQueryString(t *testing.T) {
+	s := NewPhraseSuggester("simple_phrase").
+		Text("noble price").
+		Field("title.trigram").
+		Size(1).
+		CandidateGenerator(
+			NewDirectCandidateGenerator("title.trigram").
+				SuggestMode("always").
+				MinWordLength(1),
+		).
+		CollateQuery(
+			NewScriptInline(`{"match":{"{{field_name}}":"{{suggestion}}"}}`),
+		).
+		CollateParams(map[string]interface{}{"field_name": "title"}).
+		CollatePrune(true)
+	src, err := s.Source(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(src)
+	if err != nil {
+		t.Fatalf("marshaling to JSON failed: %v", err)
+	}
+	got := string(data)
+	expected := `{"simple_phrase":{"text":"noble price","phrase":{"collate":{"params":{"field_name":"title"},"prune":true,"query":{"source":{"match":{"{{field_name}}":"{{suggestion}}"}}}},"direct_generator":[{"field":"title.trigram","min_word_length":1,"suggest_mode":"always"}],"field":"title.trigram","size":1}}}`
+	if got != expected {
+		t.Errorf("expected\n%s\n,got:\n%s", expected, got)
 	}
 }

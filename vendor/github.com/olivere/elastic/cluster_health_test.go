@@ -1,10 +1,11 @@
-// Copyright 2012-2015 Oliver Eilhard. All rights reserved.
+// Copyright 2012-present Oliver Eilhard. All rights reserved.
 // Use of this source code is governed by a MIT-license.
 // See http://olivere.mit-license.org/license.txt for details.
 
 package elastic
 
 import (
+	"context"
 	"net/url"
 	"testing"
 )
@@ -13,7 +14,7 @@ func TestClusterHealth(t *testing.T) {
 	client := setupTestClientAndCreateIndex(t)
 
 	// Get cluster health
-	res, err := client.ClusterHealth().Index(testIndexName).Do()
+	res, err := client.ClusterHealth().Index(testIndexName).Level("shards").Pretty(true).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +36,7 @@ func TestClusterHealthURLs(t *testing.T) {
 			Service: &ClusterHealthService{
 				indices: []string{},
 			},
-			ExpectedPath: "/_cluster/health/",
+			ExpectedPath: "/_cluster/health",
 		},
 		{
 			Service: &ClusterHealthService{
@@ -74,22 +75,31 @@ func TestClusterHealthURLs(t *testing.T) {
 }
 
 func TestClusterHealthWaitForStatus(t *testing.T) {
-	client := setupTestClientAndCreateIndex(t)
+	client := setupTestClientAndCreateIndex(t) //, SetTraceLog(log.New(os.Stdout, "", 0)))
+
+	// Ensure preconditions are met: A green cluster.
+	health, err := client.ClusterHealth().Do(context.TODO())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := health.Status, "green"; got != want {
+		t.Skipf("precondition failed: expected cluster to be %q, not %q", want, got)
+	}
 
 	// Cluster health on an index that does not exist should never get to yellow
-	health, err := client.ClusterHealth().Index("no-such-index").WaitForStatus("yellow").Timeout("1s").Do()
-	if err != nil {
-		t.Fatalf("expected no error; got: %v", err)
+	health, err = client.ClusterHealth().Index("no-such-index").WaitForStatus("yellow").Timeout("1s").Do(context.TODO())
+	if err == nil {
+		t.Fatalf("expected timeout error; got: %v", err)
 	}
-	if health.TimedOut != true {
-		t.Fatalf("expected to timeout; got: %v", health.TimedOut)
+	if !IsTimeout(err) {
+		t.Fatalf("expected timeout error; got: %v", err)
 	}
-	if health.Status != "red" {
-		t.Fatalf("expected health = %q; got: %q", "red", health.Status)
+	if health != nil {
+		t.Fatalf("expected no response; got: %v", health)
 	}
 
 	// Cluster wide health
-	health, err = client.ClusterHealth().WaitForStatus("green").Timeout("10s").Do()
+	health, err = client.ClusterHealth().WaitForGreenStatus().Timeout("10s").Do(context.TODO())
 	if err != nil {
 		t.Fatalf("expected no error; got: %v", err)
 	}

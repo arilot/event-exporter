@@ -1,10 +1,11 @@
-// Copyright 2012-2015 Oliver Eilhard. All rights reserved.
+// Copyright 2012-present Oliver Eilhard. All rights reserved.
 // Use of this source code is governed by a MIT-license.
 // See http://olivere.mit-license.org/license.txt for details.
 
 package elastic
 
 import (
+	"context"
 	"testing"
 )
 
@@ -16,28 +17,28 @@ func TestDelete(t *testing.T) {
 	tweet3 := tweet{User: "sandrae", Message: "Cycling is fun."}
 
 	// Add all documents
-	_, err := client.Index().Index(testIndexName).Type("tweet").Id("1").BodyJson(&tweet1).Do()
+	_, err := client.Index().Index(testIndexName).Type("doc").Id("1").BodyJson(&tweet1).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = client.Index().Index(testIndexName).Type("tweet").Id("2").BodyJson(&tweet2).Do()
+	_, err = client.Index().Index(testIndexName).Type("doc").Id("2").BodyJson(&tweet2).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = client.Index().Index(testIndexName).Type("tweet").Id("3").BodyJson(&tweet3).Do()
+	_, err = client.Index().Index(testIndexName).Type("doc").Id("3").BodyJson(&tweet3).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = client.Flush().Index(testIndexName).Do()
+	_, err = client.Flush().Index(testIndexName).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Count documents
-	count, err := client.Count(testIndexName).Do()
+	count, err := client.Count(testIndexName).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,18 +47,18 @@ func TestDelete(t *testing.T) {
 	}
 
 	// Delete document 1
-	res, err := client.Delete().Index(testIndexName).Type("tweet").Id("1").Do()
+	res, err := client.Delete().Index(testIndexName).Type("doc").Id("1").Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Found != true {
-		t.Errorf("expected Found = true; got %v", res.Found)
+	if want, have := "deleted", res.Result; want != have {
+		t.Errorf("expected Result = %q; got %q", want, have)
 	}
-	_, err = client.Flush().Index(testIndexName).Do()
+	_, err = client.Flush().Index(testIndexName).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
-	count, err = client.Count(testIndexName).Do()
+	count, err = client.Count(testIndexName).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,14 +67,33 @@ func TestDelete(t *testing.T) {
 	}
 
 	// Delete non existent document 99
-	res, err = client.Delete().Index(testIndexName).Type("tweet").Id("99").Refresh(true).Do()
-	if err != nil {
-		t.Fatal(err)
+	res, err = client.Delete().Index(testIndexName).Type("doc").Id("99").Refresh("true").Do(context.TODO())
+	if err == nil {
+		t.Fatal("expected error")
 	}
-	if res.Found != false {
-		t.Errorf("expected Found = false; got %v", res.Found)
+	if !IsNotFound(err) {
+		t.Fatalf("expected 404, got: %v", err)
 	}
-	count, err = client.Count(testIndexName).Do()
+	if _, ok := err.(*Error); !ok {
+		t.Fatalf("expected error type *Error, got: %T", err)
+	}
+	if res == nil {
+		t.Fatal("expected response")
+	}
+	if have, want := res.Id, "99"; have != want {
+		t.Errorf("expected _id = %q, got %q", have, want)
+	}
+	if have, want := res.Index, testIndexName; have != want {
+		t.Errorf("expected _index = %q, got %q", have, want)
+	}
+	if have, want := res.Type, "doc"; have != want {
+		t.Errorf("expected _type = %q, got %q", have, want)
+	}
+	if have, want := res.Result, "not_found"; have != want {
+		t.Errorf("expected Result = %q, got %q", have, want)
+	}
+
+	count, err = client.Count(testIndexName).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,34 +102,33 @@ func TestDelete(t *testing.T) {
 	}
 }
 
-func TestDeleteWithEmptyIDFails(t *testing.T) {
-	client := setupTestClientAndCreateIndex(t)
+func TestDeleteValidate(t *testing.T) {
+	client := setupTestClientAndCreateIndexAndAddDocs(t)
 
-	tweet1 := tweet{User: "olivere", Message: "Welcome to Golang and Elasticsearch."}
-	_, err := client.Index().Index(testIndexName).Type("tweet").Id("1").BodyJson(&tweet1).Do()
-	if err != nil {
-		t.Fatal(err)
+	// No index name -> fail with error
+	res, err := NewDeleteService(client).Type("doc").Id("1").Do(context.TODO())
+	if err == nil {
+		t.Fatalf("expected Delete to fail without index name")
 	}
-	_, err = client.Flush().Index(testIndexName).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Delete document with blank ID
-	_, err = client.Delete().Index(testIndexName).Type("tweet").Id("").Do()
-	if err != ErrMissingId {
-		t.Fatalf("expected to not accept delete without identifier, got: %v", err)
+	if res != nil {
+		t.Fatalf("expected result to be == nil; got: %v", res)
 	}
 
-	// Delete document with blank type
-	_, err = client.Delete().Index(testIndexName).Type("").Id("1").Do()
-	if err != ErrMissingType {
-		t.Fatalf("expected to not accept delete without type, got: %v", err)
+	// No type -> fail with error
+	res, err = NewDeleteService(client).Index(testIndexName).Id("1").Do(context.TODO())
+	if err == nil {
+		t.Fatalf("expected Delete to fail without type")
+	}
+	if res != nil {
+		t.Fatalf("expected result to be == nil; got: %v", res)
 	}
 
-	// Delete document with blank index
-	_, err = client.Delete().Index("").Type("tweet").Id("1").Do()
-	if err != ErrMissingIndex {
-		t.Fatalf("expected to not accept delete without index, got: %v", err)
+	// No id -> fail with error
+	res, err = NewDeleteService(client).Index(testIndexName).Type("doc").Do(context.TODO())
+	if err == nil {
+		t.Fatalf("expected Delete to fail without id")
+	}
+	if res != nil {
+		t.Fatalf("expected result to be == nil; got: %v", res)
 	}
 }

@@ -3,20 +3,115 @@
 	"ignore": "",
 	"package": [
 		{
-			"checksumSHA1": "EhVkOShRvRvNa8YVu+zVvwxptXQ=",
+			"checksumSHA1": "XJ3t1171p7xIlYJ5oEvuNekFDx0=",
+			"path": "github.com/google/go-cmp/cmp",
+			"revision": "6f77996f0c42f7b84e5a2b252227263f93432e9b",
+			"revisionTime": "2019-03-12T03:24:27Z"
+		},
+		{
+			"checksumSHA1": "5WXYCBOFugvKioakQVCzHDpQ9UI=",
+			"path": "github.com/google/go-cmp/cmp/cmpopts",
+			"revision": "6f77996f0c42f7b84e5a2b252227263f93432e9b",
+			"revisionTime": "2019-03-12T03:24:27Z"
+		},
+		{
+			"checksumSHA1": "pWz4PNfrztQm9aa06/sVKkhZfIA=",
+			"path": "github.com/google/go-cmp/cmp/internal/diff",
+			"revision": "6f77996f0c42f7b84e5a2b252227263f93432e9b",
+			"revisionTime": "2019-03-12T03:24:27Z"
+		},
+		{
+			"checksumSHA1": "nR8EJ8i8lqxxmtLPnXI7WlYANiE=",
+			"path": "github.com/google/go-cmp/cmp/internal/flags",
+			"revision": "6f77996f0c42f7b84e5a2b252227263f93432e9b",
+			"revisionTime": "2019-03-12T03:24:27Z"
+		},
+		{
+			"checksumSHA1": "jhv22Pa2Mn8aNerLBT5eLZfILqs=",
+			"path": "github.com/google/go-cmp/cmp/internal/function",
+			"revision": "6f77996f0c42f7b84e5a2b252227263f93432e9b",
+			"revisionTime": "2019-03-12T03:24:27Z"
+		},
+		{
+			"checksumSHA1": "Itk+/f1ovltPyypbROriCBPBeJ0=",
+			"path": "github.com/google/go-cmp/cmp/internal/testprotos",
+			"revision": "6f77996f0c42f7b84e5a2b252227263f93432e9b",
+			"revisionTime": "2019-03-12T03:24:27Z"
+		},
+		{
+			"checksumSHA1": "tvL+eRWuf50vUaVaY8B/s6DMj70=",
+			"path": "github.com/google/go-cmp/cmp/internal/teststructs",
+			"revision": "6f77996f0c42f7b84e5a2b252227263f93432e9b",
+			"revisionTime": "2019-03-12T03:24:27Z"
+		},
+		{
+			"checksumSHA1": "F2DJ2xHTaFHceKwAlpYu9lSJD60=",
+			"path": "github.com/google/go-cmp/cmp/internal/value",
+			"revision": "6f77996f0c42f7b84e5a2b252227263f93432e9b",
+			"revisionTime": "2019-03-12T03:24:27Z"
+		},
+		{
+			"checksumSHA1": "NjWIDeOYOtfpO/wTtsRi2cqMErM=",
+			"path": "github.com/mailru/easyjson",
+			"revision": "1ea4449da9834f4d333f1cc461c374aea217d249",
+			"revisionTime": "2019-04-03T19:44:19Z"
+		},
+		{
+			"checksumSHA1": "0knB+RWz+27jmYQ68FmteTorirg=",
+			"path": "github.com/mailru/easyjson/buffer",
+			"revision": "1ea4449da9834f4d333f1cc461c374aea217d249",
+			"revisionTime": "2019-04-03T19:44:19Z"
+		},
+		{
+			"checksumSHA1": "ZdmWWs72R8i/P/o+mTCJKDRKRiI=",
+			"path": "github.com/mailru/easyjson/jlexer",
+			"revision": "1ea4449da9834f4d333f1cc461c374aea217d249",
+			"revisionTime": "2019-04-03T19:44:19Z"
+		},
+		{
+			"checksumSHA1": "4BAeeJ7JywEQyR6GqRrxfSfN2/Q=",
+			"path": "github.com/mailru/easyjson/jwriter",
+			"revision": "1ea4449da9834f4d333f1cc461c374aea217d249",
+			"revisionTime": "2019-04-03T19:44:19Z"
+		},
+		{
+			"checksumSHA1": "Nxnbm+QIjI1o7bG8Wj9PFY/aupU=",
 			"path": "github.com/olivere/elastic",
-			"revision": "518f200712e1ca9fb3d26933b38c1d00310c60fd",
-			"revisionTime": "2019-01-17T07:52:34Z"
+			"revision": "fd8097e6573badde047ca2a22638fc1cbf87eeac",
+			"revisionTime": "2019-04-19T06:58:01Z",
+			"version": "=release-branch.v6",
+			"versionExact": "release-branch.v6"
+		},
+		{
+			"checksumSHA1": "PGNPB3ZRG+eyQWeyhYdGHlXeg80=",
+			"path": "github.com/olivere/elastic/config",
+			"revision": "fd8097e6573badde047ca2a22638fc1cbf87eeac",
+			"revisionTime": "2019-04-19T06:58:01Z",
+			"version": "=release-branch.v6",
+			"versionExact": "release-branch.v6"
 		},
 		{
 			"checksumSHA1": "0DXhyeMMy4isAhCXQCOVzv+wGqY=",
 			"path": "github.com/olivere/elastic/uritemplates",
-			"revision": "518f200712e1ca9fb3d26933b38c1d00310c60fd",
-			"revisionTime": "2019-01-17T07:52:34Z"
+			"revision": "fd8097e6573badde047ca2a22638fc1cbf87eeac",
+			"revisionTime": "2019-04-19T06:58:01Z",
+			"version": "=release-branch.v6",
+			"versionExact": "release-branch.v6"
 		},
 		{
 			"path": "github.com/olivere/elastic/v6",
 			"revision": ""
+		},
+		{
+			"path": "github.com/olivere/elastic@",
+			"revision": "=release-branch.v6",
+			"version": "=release-branch.v6"
+		},
+		{
+			"checksumSHA1": "W5XFRMopUjaPHf7px4zRCV2n3iE=",
+			"path": "github.com/pkg/errors",
+			"revision": "27936f6d90f9c8e1145f11ed52ffffbfdb9e0af7",
+			"revisionTime": "2019-02-27T00:00:51Z"
 		},
 		{
 			"checksumSHA1": "2DcHH6pj3l4RQugcUWhcvzCuo28=",

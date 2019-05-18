@@ -1,312 +1,16 @@
-// Copyright 2012-2015 Oliver Eilhard. All rights reserved.
+// Copyright 2012-present Oliver Eilhard. All rights reserved.
 // Use of this source code is governed by a MIT-license.
 // See http://olivere.mit-license.org/license.txt for details.
 
 package elastic
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
-	"log"
-	"os"
 	"testing"
-	"time"
 )
-
-const (
-	testIndexName  = "elastic-test"
-	testIndexName2 = "elastic-test2"
-	testMapping    = `
-{
-	"settings":{
-		"number_of_shards":1,
-		"number_of_replicas":0
-	},
-	"mappings":{
-		"_default_": {
-			"_timestamp": {
-				"enabled": true,
-				"store": "yes"
-			},
-			"_ttl": {
-				"enabled": true,
-				"store": "yes"
-			}
-		},
-		"tweet":{
-			"properties":{
-				"tags":{
-					"type":"string"
-				},
-				"location":{
-					"type":"geo_point"
-				},
-				"suggest_field":{
-					"type":"completion",
-					"payloads":true
-				}
-			}
-		},
-		"comment":{
-			"_parent": {
-				"type":	"tweet"
-			}
-		}
-	}
-}
-`
-)
-
-type tweet struct {
-	User     string        `json:"user"`
-	Message  string        `json:"message"`
-	Retweets int           `json:"retweets"`
-	Image    string        `json:"image,omitempty"`
-	Created  time.Time     `json:"created,omitempty"`
-	Tags     []string      `json:"tags,omitempty"`
-	Location string        `json:"location,omitempty"`
-	Suggest  *SuggestField `json:"suggest_field,omitempty"`
-}
-
-func (t tweet) String() string {
-	return fmt.Sprintf("tweet{User:%q,Message:%q,Retweets:%d}", t.User, t.Message, t.Retweets)
-}
-
-type comment struct {
-	User    string    `json:"user"`
-	Comment string    `json:"comment"`
-	Created time.Time `json:"created,omitempty"`
-}
-
-func (c comment) String() string {
-	return fmt.Sprintf("comment{User:%q,Comment:%q}", c.User, c.Comment)
-}
-
-func isTravis() bool {
-	return os.Getenv("TRAVIS") != ""
-}
-
-func travisGoVersion() string {
-	return os.Getenv("TRAVIS_GO_VERSION")
-}
-
-type logger interface {
-	Error(args ...interface{})
-	Errorf(format string, args ...interface{})
-	Fatal(args ...interface{})
-	Fatalf(format string, args ...interface{})
-	Fail()
-	FailNow()
-	Log(args ...interface{})
-	Logf(format string, args ...interface{})
-}
-
-func setupTestClient(t logger, options ...ClientOptionFunc) (client *Client) {
-	var err error
-
-	client, err = NewClient(options...)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	client.DeleteIndex(testIndexName).Do()
-	client.DeleteIndex(testIndexName2).Do()
-
-	return client
-}
-
-func setupTestClientAndCreateIndex(t logger, options ...ClientOptionFunc) *Client {
-	client := setupTestClient(t, options...)
-
-	// Create index
-	createIndex, err := client.CreateIndex(testIndexName).Body(testMapping).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if createIndex == nil {
-		t.Errorf("expected result to be != nil; got: %v", createIndex)
-	}
-
-	// Create second index
-	createIndex2, err := client.CreateIndex(testIndexName2).Body(testMapping).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if createIndex2 == nil {
-		t.Errorf("expected result to be != nil; got: %v", createIndex2)
-	}
-
-	return client
-}
-
-func setupTestClientAndCreateIndexAndLog(t logger, options ...ClientOptionFunc) *Client {
-	return setupTestClientAndCreateIndex(t, SetTraceLog(log.New(os.Stdout, "", 0)))
-}
-
-func setupTestClientAndCreateIndexAndAddDocs(t logger, options ...ClientOptionFunc) *Client {
-	client := setupTestClientAndCreateIndex(t, options...)
-
-	tweet1 := tweet{User: "olivere", Message: "Welcome to Golang and Elasticsearch."}
-	tweet2 := tweet{User: "olivere", Message: "Another unrelated topic."}
-	tweet3 := tweet{User: "sandrae", Message: "Cycling is fun."}
-	comment1 := comment{User: "nico", Comment: "You bet."}
-
-	_, err := client.Index().Index(testIndexName).Type("tweet").Id("1").BodyJson(&tweet1).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = client.Index().Index(testIndexName).Type("tweet").Id("2").BodyJson(&tweet2).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = client.Index().Index(testIndexName).Type("tweet").Id("3").Routing("someroutingkey").BodyJson(&tweet3).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = client.Index().Index(testIndexName).Type("comment").Id("1").Parent("3").BodyJson(&comment1).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = client.Flush().Index(testIndexName).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return client
-}
 
 func TestIndexLifecycle(t *testing.T) {
-	client := setupTestClient(t)
-
-	// Create index
-	createIndex, err := client.CreateIndex(testIndexName).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !createIndex.Acknowledged {
-		t.Errorf("expected CreateIndexResult.Acknowledged %v; got %v", true, createIndex.Acknowledged)
-	}
-
-	// Check if index exists
-	indexExists, err := client.IndexExists(testIndexName).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !indexExists {
-		t.Fatalf("index %s should exist, but doesn't\n", testIndexName)
-	}
-
-	// Delete index
-	deleteIndex, err := client.DeleteIndex(testIndexName).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !deleteIndex.Acknowledged {
-		t.Errorf("expected DeleteIndexResult.Acknowledged %v; got %v", true, deleteIndex.Acknowledged)
-	}
-
-	// Check if index exists
-	indexExists, err = client.IndexExists(testIndexName).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if indexExists {
-		t.Fatalf("index %s should not exist, but does\n", testIndexName)
-	}
-}
-
-func TestIndexExistScenarios(t *testing.T) {
-	client := setupTestClient(t)
-
-	// Should return false if index does not exist
-	indexExists, err := client.IndexExists(testIndexName).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if indexExists {
-		t.Fatalf("expected index exists to return %v, got %v", false, indexExists)
-	}
-
-	// Create index
-	createIndex, err := client.CreateIndex(testIndexName).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !createIndex.Acknowledged {
-		t.Errorf("expected CreateIndexResult.Ack %v; got %v", true, createIndex.Acknowledged)
-	}
-
-	// Should return true if index does not exist
-	indexExists, err = client.IndexExists(testIndexName).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !indexExists {
-		t.Fatalf("expected index exists to return %v, got %v", true, indexExists)
-	}
-}
-
-// TODO(oe): Find out why this test fails on Travis CI.
-/*
-func TestIndexOpenAndClose(t *testing.T) {
-	client := setupTestClient(t)
-
-	// Create index
-	createIndex, err := client.CreateIndex(testIndexName).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !createIndex.Acknowledged {
-		t.Errorf("expected CreateIndexResult.Acknowledged %v; got %v", true, createIndex.Acknowledged)
-	}
-	defer func() {
-		// Delete index
-		deleteIndex, err := client.DeleteIndex(testIndexName).Do()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !deleteIndex.Acknowledged {
-			t.Errorf("expected DeleteIndexResult.Acknowledged %v; got %v", true, deleteIndex.Acknowledged)
-		}
-	}()
-
-	waitForYellow := func() {
-		// Wait for status yellow
-		res, err := client.ClusterHealth().WaitForStatus("yellow").Timeout("15s").Do()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if res != nil && res.TimedOut {
-			t.Fatalf("cluster time out waiting for status %q", "yellow")
-		}
-	}
-
-	// Wait for cluster
-	waitForYellow()
-
-	// Close index
-	cresp, err := client.CloseIndex(testIndexName).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !cresp.Acknowledged {
-		t.Fatalf("expected close index of %q to be acknowledged\n", testIndexName)
-	}
-
-	// Wait for cluster
-	waitForYellow()
-
-	// Open index again
-	oresp, err := client.OpenIndex(testIndexName).Do()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !oresp.Acknowledged {
-		t.Fatalf("expected open index of %q to be acknowledged\n", testIndexName)
-	}
-}
-*/
-
-func TestDocumentLifecycle(t *testing.T) {
 	client := setupTestClientAndCreateIndex(t)
 
 	tweet1 := tweet{User: "olivere", Message: "Welcome to Golang and Elasticsearch."}
@@ -314,10 +18,10 @@ func TestDocumentLifecycle(t *testing.T) {
 	// Add a document
 	indexResult, err := client.Index().
 		Index(testIndexName).
-		Type("tweet").
+		Type("doc").
 		Id("1").
 		BodyJson(&tweet1).
-		Do()
+		Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +30,7 @@ func TestDocumentLifecycle(t *testing.T) {
 	}
 
 	// Exists
-	exists, err := client.Exists().Index(testIndexName).Type("tweet").Id("1").Do()
+	exists, err := client.Exists().Index(testIndexName).Type("doc").Id("1").Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,17 +41,17 @@ func TestDocumentLifecycle(t *testing.T) {
 	// Get document
 	getResult, err := client.Get().
 		Index(testIndexName).
-		Type("tweet").
+		Type("doc").
 		Id("1").
-		Do()
+		Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if getResult.Index != testIndexName {
 		t.Errorf("expected GetResult.Index %q; got %q", testIndexName, getResult.Index)
 	}
-	if getResult.Type != "tweet" {
-		t.Errorf("expected GetResult.Type %q; got %q", "tweet", getResult.Type)
+	if getResult.Type != "doc" {
+		t.Errorf("expected GetResult.Type %q; got %q", "doc", getResult.Type)
 	}
 	if getResult.Id != "1" {
 		t.Errorf("expected GetResult.Id %q; got %q", "1", getResult.Id)
@@ -370,7 +74,7 @@ func TestDocumentLifecycle(t *testing.T) {
 	}
 
 	// Delete document again
-	deleteResult, err := client.Delete().Index(testIndexName).Type("tweet").Id("1").Do()
+	deleteResult, err := client.Delete().Index(testIndexName).Type("doc").Id("1").Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,7 +83,7 @@ func TestDocumentLifecycle(t *testing.T) {
 	}
 
 	// Exists
-	exists, err = client.Exists().Index(testIndexName).Type("tweet").Id("1").Do()
+	exists, err = client.Exists().Index(testIndexName).Type("doc").Id("1").Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +92,7 @@ func TestDocumentLifecycle(t *testing.T) {
 	}
 }
 
-func TestDocumentLifecycleWithAutomaticIDGeneration(t *testing.T) {
+func TestIndexLifecycleWithAutomaticIDGeneration(t *testing.T) {
 	client := setupTestClientAndCreateIndex(t)
 
 	tweet1 := tweet{User: "olivere", Message: "Welcome to Golang and Elasticsearch."}
@@ -396,9 +100,9 @@ func TestDocumentLifecycleWithAutomaticIDGeneration(t *testing.T) {
 	// Add a document
 	indexResult, err := client.Index().
 		Index(testIndexName).
-		Type("tweet").
+		Type("doc").
 		BodyJson(&tweet1).
-		Do()
+		Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,7 +115,7 @@ func TestDocumentLifecycleWithAutomaticIDGeneration(t *testing.T) {
 	id := indexResult.Id
 
 	// Exists
-	exists, err := client.Exists().Index(testIndexName).Type("tweet").Id(id).Do()
+	exists, err := client.Exists().Index(testIndexName).Type("doc").Id(id).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,17 +126,17 @@ func TestDocumentLifecycleWithAutomaticIDGeneration(t *testing.T) {
 	// Get document
 	getResult, err := client.Get().
 		Index(testIndexName).
-		Type("tweet").
+		Type("doc").
 		Id(id).
-		Do()
+		Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if getResult.Index != testIndexName {
 		t.Errorf("expected GetResult.Index %q; got %q", testIndexName, getResult.Index)
 	}
-	if getResult.Type != "tweet" {
-		t.Errorf("expected GetResult.Type %q; got %q", "tweet", getResult.Type)
+	if getResult.Type != "doc" {
+		t.Errorf("expected GetResult.Type %q; got %q", "doc", getResult.Type)
 	}
 	if getResult.Id != id {
 		t.Errorf("expected GetResult.Id %q; got %q", id, getResult.Id)
@@ -455,7 +159,7 @@ func TestDocumentLifecycleWithAutomaticIDGeneration(t *testing.T) {
 	}
 
 	// Delete document again
-	deleteResult, err := client.Delete().Index(testIndexName).Type("tweet").Id(id).Do()
+	deleteResult, err := client.Delete().Index(testIndexName).Type("doc").Id(id).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,12 +168,36 @@ func TestDocumentLifecycleWithAutomaticIDGeneration(t *testing.T) {
 	}
 
 	// Exists
-	exists, err = client.Exists().Index(testIndexName).Type("tweet").Id(id).Do()
+	exists, err = client.Exists().Index(testIndexName).Type("doc").Id(id).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if exists {
 		t.Errorf("expected exists %v; got %v", false, exists)
+	}
+}
+
+func TestIndexValidate(t *testing.T) {
+	client := setupTestClient(t)
+
+	tweet := tweet{User: "olivere", Message: "Welcome to Golang and Elasticsearch."}
+
+	// No index name -> fail with error
+	res, err := NewIndexService(client).Type("doc").Id("1").BodyJson(&tweet).Do(context.TODO())
+	if err == nil {
+		t.Fatalf("expected Index to fail without index name")
+	}
+	if res != nil {
+		t.Fatalf("expected result to be == nil; got: %v", res)
+	}
+
+	// No index name -> fail with error
+	res, err = NewIndexService(client).Index(testIndexName).Id("1").BodyJson(&tweet).Do(context.TODO())
+	if err == nil {
+		t.Fatalf("expected Index to fail without type")
+	}
+	if res != nil {
+		t.Fatalf("expected result to be == nil; got: %v", res)
 	}
 }
 
@@ -482,7 +210,7 @@ func TestIndexCreateExistsOpenCloseDelete(t *testing.T) {
 	client := setupTestClient(t)
 
 	// Create index
-	createIndex, err := client.CreateIndex(testIndexName).Body(testMapping).Do()
+	createIndex, err := client.CreateIndex(testIndexName).Body(testMapping).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -494,7 +222,7 @@ func TestIndexCreateExistsOpenCloseDelete(t *testing.T) {
 	}
 
 	// Exists
-	indexExists, err := client.IndexExists(testIndexName).Do()
+	indexExists, err := client.IndexExists(testIndexName).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -503,13 +231,13 @@ func TestIndexCreateExistsOpenCloseDelete(t *testing.T) {
 	}
 
 	// Flush
-	_, err = client.Flush().Index(testIndexName).Do()
+	_, err = client.Flush().Index(testIndexName).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Close index
-	closeIndex, err := client.CloseIndex(testIndexName).Do()
+	closeIndex, err := client.CloseIndex(testIndexName).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -521,7 +249,7 @@ func TestIndexCreateExistsOpenCloseDelete(t *testing.T) {
 	}
 
 	// Open index
-	openIndex, err := client.OpenIndex(testIndexName).Do()
+	openIndex, err := client.OpenIndex(testIndexName).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -533,13 +261,13 @@ func TestIndexCreateExistsOpenCloseDelete(t *testing.T) {
 	}
 
 	// Flush
-	_, err = client.Flush().Index(testIndexName).Do()
+	_, err = client.Flush().Index(testIndexName).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Delete index
-	deleteIndex, err := client.DeleteIndex(testIndexName).Do()
+	deleteIndex, err := client.DeleteIndex(testIndexName).Do(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}
