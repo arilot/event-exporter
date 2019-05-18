@@ -18,7 +18,7 @@ package sinks
 
 import (
 	"github.com/golang/glog"
-	"gopkg.in/olivere/elastic.v3"
+	"github.com/olivere/elastic"
 	api_v1 "k8s.io/api/core/v1"
 	"time"
 )
