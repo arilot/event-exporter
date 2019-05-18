@@ -21,6 +21,7 @@ import (
 	"github.com/olivere/elastic"
 	api_v1 "k8s.io/api/core/v1"
 	"time"
+  "context"
 )
 
 type ElasticSearchConf struct {
@@ -157,7 +158,7 @@ func (es *ElasticSearchSink) sendEntries(entries []*api_v1.Event) {
 		bulkRequest = bulkRequest.Add(newIndex)
 	}
 
-	_, err := bulkRequest.Do()
+	_, err := bulkRequest.Do(context.Background())
 	if err != nil {
 		glog.Errorf("save events error: %v", err)
 	}
