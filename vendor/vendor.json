@@ -1,0 +1,29 @@
+{
+	"comment": "",
+	"ignore": "",
+	"package": [
+		{
+			"checksumSHA1": "EhVkOShRvRvNa8YVu+zVvwxptXQ=",
+			"path": "github.com/olivere/elastic",
+			"revision": "518f200712e1ca9fb3d26933b38c1d00310c60fd",
+			"revisionTime": "2019-01-17T07:52:34Z"
+		},
+		{
+			"checksumSHA1": "0DXhyeMMy4isAhCXQCOVzv+wGqY=",
+			"path": "github.com/olivere/elastic/uritemplates",
+			"revision": "518f200712e1ca9fb3d26933b38c1d00310c60fd",
+			"revisionTime": "2019-01-17T07:52:34Z"
+		},
+		{
+			"path": "github.com/olivere/elastic/v6",
+			"revision": ""
+		},
+		{
+			"checksumSHA1": "2DcHH6pj3l4RQugcUWhcvzCuo28=",
+			"path": "gopkg.in/olivere/elastic.v2/uritemplates",
+			"revision": "2cd27b9ae892f6b4dd8dd6d73489797c99e9c6fa",
+			"revisionTime": "2018-05-17T14:35:08Z"
+		}
+	],
+	"rootPath": "github.com/arilot/event-exporter"
+}
